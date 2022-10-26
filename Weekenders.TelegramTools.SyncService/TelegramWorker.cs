@@ -26,10 +26,12 @@ public class TelegramWorker : BackgroundService
         _logger.LogDebug("Phone: {Phone}", _configuration.PhoneNumber);
         _logger.LogDebug("Source: {Source}", _configuration.SourceGroupName);
         _logger.LogDebug("Destination: {Destination}", _configuration.DestinationGroupName);
+        _logger.LogInformation("{Name} Constructed", nameof(TelegramWorker));
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _logger.LogInformation("Beginning Initial Setup");
         await InitialSetup();
         _logger.LogInformation("{Name} running at: {Time}", nameof(TelegramWorker), DateTimeOffset.Now);
         while (!stoppingToken.IsCancellationRequested)
@@ -40,19 +42,34 @@ public class TelegramWorker : BackgroundService
 
     private async Task Source_OnUpdate(IObject arg)
     {
+        _logger.LogDebug("{Name} Called", nameof(Source_OnUpdate));
         if (arg is not UpdatesBase updates) return;
         if (_source is null || _destination is null)
+        {
+            _logger.LogDebug("Source or Destination is null.  Skipping");
             return;
+        }
+
+        _logger.LogDebug("Processing Updates");
         foreach (var update in updates.UpdateList)
         {
             if (update is not UpdateNewMessage { message: Message message })
+            {
+                _logger.LogDebug("Message is not an update.  Skipping");
                 continue;
+            }
+
             if (message.peer_id.ID != _source.ID)
+            {
+                _logger.LogDebug("Message is not from source: {Source}", _configuration.SourceGroupName);
                 continue;
+            }
+
             switch (message.media)
             {
                 case MessageMediaDocument { document: Document document }:
                 {
+                    _logger.LogInformation("Processing Document: {Name}", document.Filename);
                     var slash = document.mime_type.IndexOf('/');
                     var filename = slash > 0 ? $"{document.id}.{document.mime_type[(slash + 1)..]}" : $"{document.id}.bin";
                     _logger.LogInformation("Downloading: {FileName} to /tmp/{TempFilename}", document.Filename, filename);
@@ -60,19 +77,23 @@ public class TelegramWorker : BackgroundService
                     await using var fileStream = File.Create(path);
                     await _client.DownloadFileAsync(document, fileStream);
                     await fileStream.DisposeAsync();
+                    _logger.LogInformation("Uploading {Name} to {Destination}", document.Filename, _configuration.DestinationGroupName);
                     await SendToDestination(path, document.Filename, document.attributes, document.thumbs is not null);
                     continue;
                 }
                 case MessageMediaPhoto { photo: Photo photo }:
                 {
+                    _logger.LogInformation("Processing Photo: {Name}", photo.ID);
                     var filename = $"{photo.ID}.jpg";
                     var path = Path.Combine("/tmp", filename);
+                    _logger.LogInformation("Downloading photo to: {Path}", path);
                     await using var file = File.Create(path);
                     var type = await _client.DownloadFileAsync(photo, file);
                     file.Close();
                     var newPath = $"/tmp/{photo.ID}.{type}";
                     if (type is not Storage_FileType.unknown and not Storage_FileType.partial)
                         File.Move(path, newPath, true);
+                    _logger.LogInformation("Uploading Photo {Id} to {Destination}", photo.ID, _configuration.DestinationGroupName);
                     await SendPhotoToDestination(newPath);
                     continue;
                 }
@@ -92,11 +113,12 @@ public class TelegramWorker : BackgroundService
         }
         catch (Exception e)
         {
-            Console.WriteLine(e);
+            _logger.LogError(e, "{Message}", e.Message);
             throw;
         }
         finally
         {
+            _logger.LogDebug("Cleaning up temporary photo: {Path}", path);
             File.Delete(path);
         }
     }
@@ -118,15 +140,17 @@ public class TelegramWorker : BackgroundService
 
             if (hasThumbs)
             {
+                _logger.LogDebug("Document {Document} has thumbnail", filename);
                 thumb = GetThumbnail(path);
+                _logger.LogDebug("Uploading thumbnail for {Document}", filename);
                 var thumbUpload = await _client.UploadFileAsync(thumb);
                 uploadDoc.flags = InputMediaUploadedDocument.Flags.has_thumb;
+                _logger.LogDebug("Attaching thumbnail to document");
                 uploadDoc.thumb = thumbUpload;
             }
 
-            var msg = await _client.SendMessageAsync(new InputPeerChannel(_destination!.ID, _destinationAccessHash),
+            await _client.SendMessageAsync(new InputPeerChannel(_destination!.ID, _destinationAccessHash),
                 null, uploadDoc);
-            //await _client.SendMediaAsync(new InputPeerChannel(_destination!.ID, _destinationAccessHash), null, file);
         }
         catch (Exception e)
         {
@@ -134,16 +158,19 @@ public class TelegramWorker : BackgroundService
         }
         finally
         {
+            _logger.LogDebug("Cleaning up temporary document files");
             File.Delete(path);
             if (hasThumbs)
                 File.Delete(thumb);
         }
     }
 
-    private static string GetMimeType(string path)
+    private string GetMimeType(string path)
     {
         var info = new FileInfo(path);
-        return MimeTypeMap.GetMimeType(info.Extension);
+        var type = MimeTypeMap.GetMimeType(info.Extension);
+        _logger.LogDebug("File {Name} has MimeType {Type}", info.Name, type);
+        return type;
     }
 
     private async Task InitialSetup()
@@ -168,7 +195,7 @@ public class TelegramWorker : BackgroundService
         var info = new FileInfo(path);
         var output = Path.ChangeExtension(info.FullName, ".jpg");
         //var success = FFMpeg.Snapshot(info.FullName, output, new(){Height = 300, Width = 300}, TimeSpan.FromMilliseconds(1));
-        var f = FFMpegArguments
+        FFMpegArguments
             .FromFileInput(info)
             .OutputToFile(output, true, options => options
                 .WithDuration(TimeSpan.FromMilliseconds(1))
