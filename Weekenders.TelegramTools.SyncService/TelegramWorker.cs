@@ -133,6 +133,7 @@ public class TelegramWorker : BackgroundService
                     var msg = new Data.Models.Message()
                     {
                         TelegramId = message.ID,
+                        Name = document.Filename,
                         CreatedDateTimeOffset = DateTimeOffset.UtcNow
                     };
                     await _queue.PutAsync(msg);
@@ -144,6 +145,7 @@ public class TelegramWorker : BackgroundService
                     var msg = new Data.Models.Message()
                     {
                         TelegramId = message.ID,
+                        Name = "photo",
                         CreatedDateTimeOffset = DateTimeOffset.UtcNow
                     };
                     await _queue.PutAsync(msg);
