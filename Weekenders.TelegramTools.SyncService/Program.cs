@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+using Weekenders.TelegramTools.Data;
 using Weekenders.TelegramTools.SyncService;
 
 var config = new ConfigurationBuilder()
@@ -20,8 +22,20 @@ var host = Host.CreateDefaultBuilder(args)
                 .AddConsole();
         });
 
+        services.AddDbContextFactory<MessageDbContext>(options =>
+        {
+            var cs = Environment.GetEnvironmentVariable("MSSQL_CONNECTION_STRING");
+            options.UseSqlServer(cs);
+        });
+        services.AddSingleton<IDbService, DbService>();
+        services.AddSingleton<IMessageQueueService, MessageQueueService>();
         services.AddHostedService<TelegramWorker>();
     })
     .Build();
-
+await using (var scope = host.Services.CreateAsyncScope())
+{
+    var ctxFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<MessageDbContext>>();
+    var ctx = await ctxFactory.CreateDbContextAsync();
+    await ctx.Database.MigrateAsync();
+};
 await host.RunAsync();

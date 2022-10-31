@@ -10,12 +10,14 @@ public class TelegramWorker : BackgroundService
 {
     private readonly ILogger<TelegramWorker> _logger;
     private readonly TelegramConfiguration _configuration;
+    private readonly IMessageQueueService _queue;
     private Client _client = null!;
     private Channel? _source;
     private Channel? _destination;
     private long _destinationAccessHash;
+    private long _sourceAccessHash;
 
-    public TelegramWorker(ILogger<TelegramWorker> logger, IOptions<TelegramConfiguration> options)
+    public TelegramWorker(ILogger<TelegramWorker> logger, IOptions<TelegramConfiguration> options, IMessageQueueService queue)
     {
         _logger = logger;
         ArgumentNullException.ThrowIfNull(options.Value);
@@ -26,6 +28,7 @@ public class TelegramWorker : BackgroundService
         _logger.LogDebug("Phone: {Phone}", _configuration.PhoneNumber);
         _logger.LogDebug("Source: {Source}", _configuration.SourceGroupName);
         _logger.LogDebug("Destination: {Destination}", _configuration.DestinationGroupName);
+        _queue = queue;
         _logger.LogInformation("{Name} Constructed", nameof(TelegramWorker));
     }
 
@@ -36,7 +39,64 @@ public class TelegramWorker : BackgroundService
         _logger.LogInformation("{Name} running at: {Time}", nameof(TelegramWorker), DateTimeOffset.Now);
         while (!stoppingToken.IsCancellationRequested)
         {
-            await Task.Delay(1000, stoppingToken);
+            await ProcessMessages();
+            await Task.Delay(5000, stoppingToken);
+        }
+    }
+
+    private async Task ProcessMessages()
+    {
+        var msg = await _queue.PullAsync();
+        if (msg is null)
+            return;
+        if (_source is null || _destination is null)
+        {
+            _logger.LogDebug("Source or Destination is null.  Skipping");
+            return;
+        }
+
+        var messages = await _client.GetMessages(new InputPeerChannel(_source.ID, _sourceAccessHash),
+            new InputMessageID() { id = (int)msg.TelegramId });
+        foreach (var message in messages.Messages)
+        {
+            if (message is Message tgMessage)
+            {
+                switch (tgMessage.media)
+                {
+                    case MessageMediaDocument { document: Document document }:
+                    {
+                        _logger.LogInformation("Adding Document {Name} To Queue", document.Filename);
+                        var slash = document.mime_type.IndexOf('/');
+                        var filename = slash > 0 ? $"{document.id}.{document.mime_type[(slash + 1)..]}" : $"{document.id}.bin";
+                        _logger.LogInformation("Downloading: {FileName} to /tmp/{TempFilename}", document.Filename, filename);
+                        var path = $"/tmp/{filename}";
+                        await using var fileStream = File.Create(path);
+                        await _client.DownloadFileAsync(document, fileStream);
+                        await fileStream.DisposeAsync();
+                        _logger.LogInformation("Uploading {Name} to {Destination}", document.Filename, _configuration.DestinationGroupName);
+                        await SendToDestination(path, document.Filename, document.attributes, document.thumbs is not null);
+                        continue;
+                    }
+                    case MessageMediaPhoto { photo: Photo photo }:
+                    {
+                        _logger.LogInformation("Adding Photo {Name} To Queue", photo.ID);
+                        var filename = $"{photo.ID}.jpg";
+                        var path = Path.Combine("/tmp", filename);
+                        _logger.LogInformation("Downloading photo to: {Path}", path);
+                        await using var file = File.Create(path);
+                        var type = await _client.DownloadFileAsync(photo, file);
+                        file.Close();
+                        var newPath = $"/tmp/{photo.ID}.{type}";
+                        if (type is not Storage_FileType.unknown and not Storage_FileType.partial)
+                            File.Move(path, newPath, true);
+                        _logger.LogInformation("Uploading Photo {Id} to {Destination}", photo.ID, _configuration.DestinationGroupName);
+                        await SendPhotoToDestination(newPath);
+                        continue;
+                    }
+                    default:
+                        continue;
+                }
+            }
         }
     }
 
@@ -69,32 +129,24 @@ public class TelegramWorker : BackgroundService
             {
                 case MessageMediaDocument { document: Document document }:
                 {
-                    _logger.LogInformation("Processing Document: {Name}", document.Filename);
-                    var slash = document.mime_type.IndexOf('/');
-                    var filename = slash > 0 ? $"{document.id}.{document.mime_type[(slash + 1)..]}" : $"{document.id}.bin";
-                    _logger.LogInformation("Downloading: {FileName} to /tmp/{TempFilename}", document.Filename, filename);
-                    var path = $"/tmp/{filename}";
-                    await using var fileStream = File.Create(path);
-                    await _client.DownloadFileAsync(document, fileStream);
-                    await fileStream.DisposeAsync();
-                    _logger.LogInformation("Uploading {Name} to {Destination}", document.Filename, _configuration.DestinationGroupName);
-                    await SendToDestination(path, document.Filename, document.attributes, document.thumbs is not null);
+                    _logger.LogInformation("Adding Document {Name} To Queue", document.Filename);
+                    var msg = new Data.Models.Message()
+                    {
+                        TelegramId = message.ID,
+                        CreatedDateTimeOffset = DateTimeOffset.UtcNow
+                    };
+                    await _queue.PutAsync(msg);
                     continue;
                 }
                 case MessageMediaPhoto { photo: Photo photo }:
                 {
-                    _logger.LogInformation("Processing Photo: {Name}", photo.ID);
-                    var filename = $"{photo.ID}.jpg";
-                    var path = Path.Combine("/tmp", filename);
-                    _logger.LogInformation("Downloading photo to: {Path}", path);
-                    await using var file = File.Create(path);
-                    var type = await _client.DownloadFileAsync(photo, file);
-                    file.Close();
-                    var newPath = $"/tmp/{photo.ID}.{type}";
-                    if (type is not Storage_FileType.unknown and not Storage_FileType.partial)
-                        File.Move(path, newPath, true);
-                    _logger.LogInformation("Uploading Photo {Id} to {Destination}", photo.ID, _configuration.DestinationGroupName);
-                    await SendPhotoToDestination(newPath);
+                    _logger.LogInformation("Adding Photo {Name} To Queue", photo.ID);
+                    var msg = new Data.Models.Message()
+                    {
+                        TelegramId = message.ID,
+                        CreatedDateTimeOffset = DateTimeOffset.UtcNow
+                    };
+                    await _queue.PutAsync(msg);
                     continue;
                 }
                 default:
@@ -186,9 +238,10 @@ public class TelegramWorker : BackgroundService
             .Value;
         _destination = (Channel)chats.chats
             .First(x => x.Value.Title == _configuration.DestinationGroupName && x.Value.IsActive).Value;
+        _sourceAccessHash = _client.GetAccessHashFor<Channel>(_source.ID);
         _destinationAccessHash = _client.GetAccessHashFor<Channel>(_destination.ID);
         _client.OnUpdate += Source_OnUpdate;
-    }
+        }
 
     private static string GetThumbnail(string path)
     {

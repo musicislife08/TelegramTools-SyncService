@@ -2,6 +2,13 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Weekenders.TelegramTools.SyncService", "Weekenders.TelegramTools.SyncService\Weekenders.TelegramTools.SyncService.csproj", "{CE8A000F-5694-4A28-A9C3-D6B61E7A2DD3}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Weekenders.TelegramTools.Data", "Weekenders.TelegramTools.Data\Weekenders.TelegramTools.Data.csproj", "{584DB081-6DBB-4938-9F6D-B8FC8CF5F557}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "deploy", "deploy", "{3F2E0F18-6EC4-45AA-A43C-C6A6907A0BCA}"
+	ProjectSection(SolutionItems) = preProject
+		deploy\docker-compose.yml = deploy\docker-compose.yml
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -12,5 +19,9 @@ Global
 		{CE8A000F-5694-4A28-A9C3-D6B61E7A2DD3}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{CE8A000F-5694-4A28-A9C3-D6B61E7A2DD3}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{CE8A000F-5694-4A28-A9C3-D6B61E7A2DD3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{584DB081-6DBB-4938-9F6D-B8FC8CF5F557}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{584DB081-6DBB-4938-9F6D-B8FC8CF5F557}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{584DB081-6DBB-4938-9F6D-B8FC8CF5F557}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{584DB081-6DBB-4938-9F6D-B8FC8CF5F557}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
