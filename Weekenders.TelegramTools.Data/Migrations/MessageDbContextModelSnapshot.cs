@@ -34,6 +34,10 @@ namespace Weekenders.TelegramTools.Data.Migrations
                         .IsRequired()
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<string>("Discriminator")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("Name")
                         .IsUnicode(true)
                         .HasColumnType("nvarchar(max)");
@@ -44,6 +48,18 @@ namespace Weekenders.TelegramTools.Data.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Messages");
+
+                    b.HasDiscriminator<string>("Discriminator").HasValue("Message");
+                });
+
+            modelBuilder.Entity("Weekenders.TelegramTools.Data.Models.ErroredMessage", b =>
+                {
+                    b.HasBaseType("Weekenders.TelegramTools.Data.Models.Message");
+
+                    b.Property<string>("ExceptionMessage")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasDiscriminator().HasValue("ErroredMessage");
                 });
 #pragma warning restore 612, 618
         }

@@ -7,6 +7,7 @@ public interface IMessageQueueService
 {
     Task PutAsync(Message message);
     Task<Message?> PullAsync();
+    Task PutErrorAsync(ErroredMessage message);
 }
 
 public class MessageQueueService: IMessageQueueService
@@ -25,6 +26,12 @@ public class MessageQueueService: IMessageQueueService
     {
         _logger.LogInformation("Adding Message {Id} to Queue", message.TelegramId);
         await _dbService.AddMessageAsync(message);
+    }
+
+    public async Task PutErrorAsync(ErroredMessage message)
+    {
+        _logger.LogInformation("Adding message {Id} to error queue", message.TelegramId);
+        await _dbService.AddErrorAsync(message);
     }
 
     public async Task<Message?> PullAsync()

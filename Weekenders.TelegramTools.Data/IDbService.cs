@@ -5,5 +5,6 @@ namespace Weekenders.TelegramTools.Data;
 public interface IDbService
 {
     Task<Message?> GetLatestMessageAsync();
-    Task AddMessageAsync(Message message);
+    Task AddMessageAsync(Message? message);
+    Task AddErrorAsync(ErroredMessage? message);
 }

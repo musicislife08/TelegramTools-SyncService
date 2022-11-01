@@ -2,7 +2,9 @@ using FFMpegCore;
 using Microsoft.Extensions.Options;
 using MimeTypes;
 using TL;
+using Weekenders.TelegramTools.Data.Models;
 using WTelegram;
+using Message = TL.Message;
 
 namespace Weekenders.TelegramTools.SyncService;
 
@@ -74,7 +76,24 @@ public class TelegramWorker : BackgroundService
                         await _client.DownloadFileAsync(document, fileStream);
                         await fileStream.DisposeAsync();
                         _logger.LogInformation("Uploading {Name} to {Destination}", document.Filename, _configuration.DestinationGroupName);
-                        await SendToDestination(path, document.Filename, document.attributes, document.thumbs is not null);
+                        try
+                        {
+                            await SendToDestination(path, document.Filename, document.attributes, document.thumbs is not null);
+                        }
+                        catch (Exception e)
+                        {
+                            var erroredMessage = new ErroredMessage()
+                            {
+                                Id = msg.Id,
+                                Name = msg.Name,
+                                TelegramId = msg.TelegramId,
+                                CreatedDateTimeOffset = msg.CreatedDateTimeOffset,
+                                ExceptionMessage = e.Message
+                            };
+                            await _queue.PutErrorAsync(erroredMessage);
+                            _logger.LogError(e, "{Message}", e.Message);
+                        }
+
                         continue;
                     }
                     case MessageMediaPhoto { photo: Photo photo }:
@@ -179,6 +198,8 @@ public class TelegramWorker : BackgroundService
 
     private async Task SendToDestination(string path, string filename, DocumentAttribute[] attributes, bool hasThumbs)
     {
+        if (string.IsNullOrWhiteSpace(path))
+            throw new ArgumentNullException(nameof(path));
         var thumb = string.Empty;
         try
         {

@@ -51,6 +51,16 @@ public class DbService: IDbService
         _logger.LogDebug("Added {Id} to database", msg.TelegramId);
     }
 
+    public async Task AddErrorAsync(ErroredMessage? message)
+    {
+        _logger.LogTrace("{Name} Called", nameof(AddMessageAsync));
+        ArgumentNullException.ThrowIfNull(message);
+        await using var context = await _contextFactory.CreateDbContextAsync();
+        await context.ErroredMessages.AddAsync(message);
+        await context.SaveChangesAsync();
+        _logger.LogDebug("Added {Id} to errored messages", message.TelegramId);
+    }
+
     private static async Task<Message?> CheckMessage(Message? message, MessageDbContext context)
     {
         ArgumentNullException.ThrowIfNull(message);

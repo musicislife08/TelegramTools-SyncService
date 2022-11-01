@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using TL;
 using Weekenders.TelegramTools.Data;
 using Weekenders.TelegramTools.SyncService;
 
@@ -30,6 +31,10 @@ var host = Host.CreateDefaultBuilder(args)
         services.AddSingleton<IDbService, DbService>();
         services.AddSingleton<IMessageQueueService, MessageQueueService>();
         services.AddHostedService<TelegramWorker>();
+        services.Configure<HostOptions>(options =>
+        {
+            options.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore;
+        });
     })
     .Build();
 await using (var scope = host.Services.CreateAsyncScope())
