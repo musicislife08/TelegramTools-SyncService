@@ -196,11 +196,14 @@ public class TelegramWorker : BackgroundService
             {
                 _logger.LogDebug("Document {Document} has thumbnail", filename);
                 thumb = GetThumbnail(path);
-                _logger.LogDebug("Uploading thumbnail for {Document}", filename);
-                var thumbUpload = await _client.UploadFileAsync(thumb);
-                uploadDoc.flags = InputMediaUploadedDocument.Flags.has_thumb;
-                _logger.LogDebug("Attaching thumbnail to document");
-                uploadDoc.thumb = thumbUpload;
+                if (thumb is not null)
+                {
+                    _logger.LogDebug("Uploading thumbnail for {Document}", filename);
+                    var thumbUpload = await _client.UploadFileAsync(thumb);
+                    uploadDoc.flags = InputMediaUploadedDocument.Flags.has_thumb;
+                    _logger.LogDebug("Attaching thumbnail to document");
+                    uploadDoc.thumb = thumbUpload;
+                }
             }
 
             await _client.SendMessageAsync(new InputPeerChannel(_destination!.ID, _destinationAccessHash),
@@ -245,18 +248,27 @@ public class TelegramWorker : BackgroundService
         _client.OnUpdate += Source_OnUpdate;
         }
 
-    private static string GetThumbnail(string path)
+    private static string? GetThumbnail(string path)
     {
         var info = new FileInfo(path);
         var output = Path.ChangeExtension(info.FullName, ".jpg");
-        //var success = FFMpeg.Snapshot(info.FullName, output, new(){Height = 300, Width = 300}, TimeSpan.FromMilliseconds(1));
-        FFMpegArguments
-            .FromFileInput(info)
-            .OutputToFile(output, true, options => options
-                .WithDuration(TimeSpan.FromMilliseconds(1))
-                .WithFrameOutputCount(1)
-                .WithFastStart())
-            .ProcessSynchronously();
+        if (!info.Exists)
+            return null;
+        try
+        {
+            FFMpegArguments
+                .FromFileInput(info)
+                .OutputToFile(output, true, options => options
+                    .WithDuration(TimeSpan.FromMilliseconds(1))
+                    .WithFrameOutputCount(1)
+                    .WithFastStart())
+                .ProcessSynchronously();
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+
         return output;
     }
 
