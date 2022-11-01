@@ -217,7 +217,7 @@ public class TelegramWorker : BackgroundService
         {
             _logger.LogDebug("Cleaning up temporary document files");
             File.Delete(path);
-            if (hasThumbs)
+            if (hasThumbs && thumb is not null)
                 File.Delete(thumb);
         }
     }
