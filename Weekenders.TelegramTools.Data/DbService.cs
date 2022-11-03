@@ -56,6 +56,7 @@ public class DbService: IDbService
         _logger.LogTrace("{Name} Called", nameof(AddMessageAsync));
         ArgumentNullException.ThrowIfNull(message);
         await using var context = await _contextFactory.CreateDbContextAsync();
+        message.Id = 0;
         await context.ErroredMessages.AddAsync(message);
         await context.SaveChangesAsync();
         _logger.LogDebug("Added {Id} to errored messages", message.TelegramId);
