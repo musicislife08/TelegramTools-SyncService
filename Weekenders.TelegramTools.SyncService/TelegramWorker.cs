@@ -41,7 +41,7 @@ public class TelegramWorker : BackgroundService
         _logger.LogInformation("{Name} running at: {Time}", nameof(TelegramWorker), DateTimeOffset.Now);
         while (!stoppingToken.IsCancellationRequested)
         {
-            await ProcessMessages();
+            //await ProcessMessages();
             await Task.Delay(5000, stoppingToken);
         }
     }
