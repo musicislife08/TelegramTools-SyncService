@@ -1,25 +1,28 @@
 using FFMpegCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using MimeTypes;
 using TL;
-using Weekenders.TelegramTools.Data.Models;
 using WTelegram;
 using Message = TL.Message;
+using MimeTypes;
+using Weekenders.TelegramTools.Data;
+using Weekenders.TelegramTools.Data.Models;
 
-namespace Weekenders.TelegramTools.SyncService;
+namespace Weekenders.TelegramTools.Telegram;
 
-public class TelegramWorker : BackgroundService
+public class TelegramService: ITelegramService
 {
-    private readonly ILogger<TelegramWorker> _logger;
+    private Client _client;
     private readonly TelegramConfiguration _configuration;
-    private readonly IMessageQueueService _queue;
-    private Client _client = null!;
+    private readonly IDataService _dataService;
+    private readonly ILogger<TelegramService> _logger;
     private Channel? _source;
     private Channel? _destination;
     private long _destinationAccessHash;
     private long _sourceAccessHash;
+    private bool _isReady = false;
 
-    public TelegramWorker(ILogger<TelegramWorker> logger, IOptions<TelegramConfiguration> options, IMessageQueueService queue)
+    public TelegramService(ILogger<TelegramService> logger, IOptions<TelegramConfiguration> options, IDataService dataService)
     {
         _logger = logger;
         ArgumentNullException.ThrowIfNull(options.Value);
@@ -30,25 +33,15 @@ public class TelegramWorker : BackgroundService
         _logger.LogDebug("Phone: {Phone}", _configuration.PhoneNumber);
         _logger.LogDebug("Source: {Source}", _configuration.SourceGroupName);
         _logger.LogDebug("Destination: {Destination}", _configuration.DestinationGroupName);
-        _queue = queue;
-        _logger.LogInformation("{Name} Constructed", nameof(TelegramWorker));
+        _dataService = dataService;
+        _logger.LogInformation("{Name} Constructed", nameof(TelegramService));
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    public async Task ProcessMessages()
     {
-        _logger.LogInformation("Beginning Initial Setup");
-        await InitialSetup();
-        _logger.LogInformation("{Name} running at: {Time}", nameof(TelegramWorker), DateTimeOffset.Now);
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            //await ProcessMessages();
-            await Task.Delay(5000, stoppingToken);
-        }
-    }
-
-    private async Task ProcessMessages()
-    {
-        var msg = await _queue.PullAsync();
+        if (!_isReady)
+            throw new Exception("Cannot processes messages without initialization");
+        var msg = await _dataService.GetFirstMessageAsync();
         if (msg is null)
             return;
         if (_source is null || _destination is null)
@@ -82,18 +75,80 @@ public class TelegramWorker : BackgroundService
                         }
                         catch (Exception e)
                         {
-                            var erroredMessage = new ErroredMessage()
-                            {
-                                Id = msg.Id,
-                                Name = msg.Name,
-                                TelegramId = msg.TelegramId,
-                                CreatedDateTimeOffset = msg.CreatedDateTimeOffset,
-                                ExceptionMessage = e.Message
-                            };
-                            await _queue.PutErrorAsync(erroredMessage);
+                            if (msg is null)
+                                throw;
+                            msg.ExceptionMessage = e.Message;
+                            await _dataService.UpdateMessageStatusAsync(msg, ProcessStatus.Errored);
                             _logger.LogError(e, "{Message}", e.Message);
                         }
 
+                        continue;
+                    }
+                    case MessageMediaPhoto { photo: Photo photo }:
+                    {
+                        _logger.LogInformation("Adding Photo {Name} To Queue", photo.ID);
+                        var filename = $"{photo.ID}.jpg";
+                        var path = Path.Combine("/tmp", filename);
+                        _logger.LogInformation("Downloading photo to: {Path}", path);
+                        await using var file = File.Create(path);
+                        var type = await _client.DownloadFileAsync(photo, file);
+                        file.Close();
+                        var newPath = $"/tmp/{photo.ID}.{type}";
+                        if (type is not Storage_FileType.unknown and not Storage_FileType.partial)
+                            File.Move(path, newPath, true);
+                        _logger.LogInformation("Uploading Photo {Id} to {Destination}", photo.ID, _configuration.DestinationGroupName);
+                        try
+                        {
+                            await SendPhotoToDestination(newPath);
+                        }
+                        catch (Exception e)
+                        {
+                            if (msg is null)
+                                throw;
+                            msg.ExceptionMessage = e.Message;
+                            await _dataService.UpdateMessageStatusAsync(msg, ProcessStatus.Errored);
+                            _logger.LogError(e, "{Message}", e.Message);
+                        }
+
+                        continue;
+                    }
+                    default:
+                        continue;
+                }
+            }
+        }
+    }
+
+    public async Task ProcessMessage(long id)
+    {
+        if (!_isReady)
+            throw new Exception("Cannot processes messages without initialization");
+        if (_source is null || _destination is null)
+        {
+            _logger.LogDebug("Source or Destination is null.  Skipping");
+            return;
+        }
+
+        var messages = await _client.GetMessages(new InputPeerChannel(_source.ID, _sourceAccessHash),
+            new InputMessageID() { id = (int)id });
+        foreach (var message in messages.Messages)
+        {
+            if (message is Message tgMessage)
+            {
+                switch (tgMessage.media)
+                {
+                    case MessageMediaDocument { document: Document document }:
+                    {
+                        _logger.LogInformation("Adding Document {Name} To Queue", document.Filename);
+                        var slash = document.mime_type.IndexOf('/');
+                        var filename = slash > 0 ? $"{document.id}.{document.mime_type[(slash + 1)..]}" : $"{document.id}.bin";
+                        _logger.LogInformation("Downloading: {FileName} to /tmp/{TempFilename}", document.Filename, filename);
+                        var path = $"/tmp/{filename}";
+                        await using var fileStream = File.Create(path);
+                        await _client.DownloadFileAsync(document, fileStream);
+                        await fileStream.DisposeAsync();
+                        _logger.LogInformation("Uploading {Name} to {Destination}", document.Filename, _configuration.DestinationGroupName);
+                        await SendToDestination(path, document.Filename, document.attributes, document.thumbs is not null);
                         continue;
                     }
                     case MessageMediaPhoto { photo: Photo photo }:
@@ -115,63 +170,6 @@ public class TelegramWorker : BackgroundService
                     default:
                         continue;
                 }
-            }
-        }
-    }
-
-    private async Task Source_OnUpdate(IObject arg)
-    {
-        _logger.LogDebug("{Name} Called", nameof(Source_OnUpdate));
-        if (arg is not UpdatesBase updates) return;
-        if (_source is null || _destination is null)
-        {
-            _logger.LogDebug("Source or Destination is null.  Skipping");
-            return;
-        }
-
-        _logger.LogDebug("Processing Updates");
-        foreach (var update in updates.UpdateList)
-        {
-            if (update is not UpdateNewMessage { message: Message message })
-            {
-                _logger.LogDebug("Message is not an update.  Skipping");
-                continue;
-            }
-
-            if (message.peer_id.ID != _source.ID)
-            {
-                _logger.LogDebug("Message is not from source: {Source}", _configuration.SourceGroupName);
-                continue;
-            }
-
-            switch (message.media)
-            {
-                case MessageMediaDocument { document: Document document }:
-                {
-                    _logger.LogInformation("Adding Document {Name} To Queue", document.Filename);
-                    var msg = new Data.Models.Message()
-                    {
-                        TelegramId = message.ID,
-                        Name = document.Filename,
-                        CreatedDateTimeOffset = DateTimeOffset.UtcNow
-                    };
-                    await _queue.PutAsync(msg);
-                    continue;
-                }
-                case MessageMediaPhoto { photo: Photo photo }:
-                {
-                    _logger.LogInformation("Adding Photo {Name} To Queue", photo.ID);
-                    var msg = new Data.Models.Message()
-                    {
-                        TelegramId = message.ID,
-                        Name = "photo",
-                        CreatedDateTimeOffset = DateTimeOffset.UtcNow
-                    };
-                    await _queue.PutAsync(msg);
-                    continue;
-                }
-                default:
-                    continue;
             }
         }
     }
@@ -251,24 +249,6 @@ public class TelegramWorker : BackgroundService
         return type;
     }
 
-    private async Task InitialSetup()
-    {
-        Helpers.Log = (lvl, str) => _logger.Log((LogLevel)lvl, "{String}", str);
-        _client = new Client(Config);
-        _client.CollectAccessHash = true;
-        _client.PingInterval = 60;
-        _client.MaxAutoReconnects = 30;
-        await _client.LoginUserIfNeeded();
-        var chats = await _client.Messages_GetAllChats();
-        _source = (Channel)chats.chats.First(x => x.Value.Title == _configuration.SourceGroupName && x.Value.IsActive)
-            .Value;
-        _destination = (Channel)chats.chats
-            .First(x => x.Value.Title == _configuration.DestinationGroupName && x.Value.IsActive).Value;
-        _sourceAccessHash = _client.GetAccessHashFor<Channel>(_source.ID);
-        _destinationAccessHash = _client.GetAccessHashFor<Channel>(_destination.ID);
-        _client.OnUpdate += Source_OnUpdate;
-        }
-
     private static string? GetThumbnail(string path)
     {
         var info = new FileInfo(path);
@@ -291,6 +271,83 @@ public class TelegramWorker : BackgroundService
         }
 
         return output;
+    }
+
+    private async Task OnUpdate(IObject arg)
+    {
+        _logger.LogDebug("{Name} Called", nameof(OnUpdate));
+        if (arg is not UpdatesBase updates) return;
+        if (_source is null || _destination is null)
+        {
+            _logger.LogDebug("Source or Destination is null.  Skipping");
+            return;
+        }
+
+        _logger.LogDebug("Processing Updates");
+        foreach (var update in updates.UpdateList)
+        {
+            if (update is not UpdateNewMessage { message: Message message })
+            {
+                _logger.LogDebug("Message is not an update.  Skipping");
+                continue;
+            }
+
+            if (message.peer_id.ID != _source.ID)
+            {
+                _logger.LogDebug("Message is not from source: {Source}", _configuration.SourceGroupName);
+                continue;
+            }
+
+            switch (message.media)
+            {
+                case MessageMediaDocument { document: Document document }:
+                {
+                    _logger.LogInformation("Adding Document {Name} To Queue", document.Filename);
+                    var msg = new Data.Models.Message()
+                    {
+                        TelegramId = message.ID,
+                        Name = document.Filename,
+                        CreatedDateTimeOffset = DateTimeOffset.UtcNow
+                    };
+                    await _dataService.AddMessageAsync(msg);
+                    continue;
+                }
+                case MessageMediaPhoto { photo: Photo photo }:
+                {
+                    _logger.LogInformation("Adding Photo {Name} To Queue", photo.ID);
+                    var msg = new Data.Models.Message()
+                    {
+                        TelegramId = message.ID,
+                        Name = "photo",
+                        CreatedDateTimeOffset = DateTimeOffset.UtcNow
+                    };
+                    await _dataService.AddMessageAsync(msg);
+                    continue;
+                }
+                default:
+                    continue;
+            }
+        }
+    }
+
+    public async Task InitialSetup(bool enableUpdate)
+    {
+        Helpers.Log = (lvl, str) => _logger.Log((LogLevel)lvl, "{String}", str);
+        _client = new(Config);
+        _client.CollectAccessHash = true;
+        _client.PingInterval = 60;
+        _client.MaxAutoReconnects = 30;
+        await _client.LoginUserIfNeeded();
+        var chats = await _client.Messages_GetAllChats();
+        _source = (Channel)chats.chats.First(x => x.Value.Title == _configuration.SourceGroupName && x.Value.IsActive)
+            .Value;
+        _destination = (Channel)chats.chats
+            .First(x => x.Value.Title == _configuration.DestinationGroupName && x.Value.IsActive).Value;
+        _sourceAccessHash = _client.GetAccessHashFor<Channel>(_source.ID);
+        _destinationAccessHash = _client.GetAccessHashFor<Channel>(_destination.ID);
+        if (enableUpdate)
+            _client.OnUpdate += OnUpdate;
+        _isReady = true;
     }
 
     private string Config(string what)

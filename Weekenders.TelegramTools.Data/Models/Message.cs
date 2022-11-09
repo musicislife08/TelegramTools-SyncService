@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using Microsoft.EntityFrameworkCore;
 
 namespace Weekenders.TelegramTools.Data.Models;
 
@@ -13,8 +12,14 @@ public class Message
     public long TelegramId { get; set; }
 
     [Required]
-    public DateTimeOffset? CreatedDateTimeOffset { get; set; }
+    public DateTimeOffset CreatedDateTimeOffset { get; set; }
 
-    [Unicode]
+    public DateTimeOffset? ProcessedDateTimeOffset { get; set; }
+
     public string? Name { get; set; }
+
+    [Required]
+    public ProcessStatus Status { get; set; } = ProcessStatus.Queued;
+
+    public string? ExceptionMessage { get; set; }
 }

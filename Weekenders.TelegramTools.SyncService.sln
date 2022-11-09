@@ -1,13 +1,20 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Weekenders.TelegramTools.SyncService", "Weekenders.TelegramTools.SyncService\Weekenders.TelegramTools.SyncService.csproj", "{CE8A000F-5694-4A28-A9C3-D6B61E7A2DD3}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Weekenders.TelegramTools.SyncListener", "Weekenders.TelegramTools.SyncListener\Weekenders.TelegramTools.SyncListener.csproj", "{CE8A000F-5694-4A28-A9C3-D6B61E7A2DD3}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Weekenders.TelegramTools.Data", "Weekenders.TelegramTools.Data\Weekenders.TelegramTools.Data.csproj", "{584DB081-6DBB-4938-9F6D-B8FC8CF5F557}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "deploy", "deploy", "{3F2E0F18-6EC4-45AA-A43C-C6A6907A0BCA}"
 	ProjectSection(SolutionItems) = preProject
 		deploy\docker-compose.yml = deploy\docker-compose.yml
+		.dockerignore = .dockerignore
 	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Weekenders.TelegramTools.SyncProcessor", "Weekenders.TelegramTools.SyncProcessor\Weekenders.TelegramTools.SyncProcessor.csproj", "{F7A9DBB8-B615-42E1-9A9D-2144F4EC0D34}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Weekenders.TelegramTools.Telegram", "Weekenders.TelegramTools.Telegram\Weekenders.TelegramTools.Telegram.csproj", "{788645D7-53A0-4869-A7AD-145FF42668C0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DataMigrator", "DataMigrator\DataMigrator.csproj", "{CC23A87F-FAF9-4E3F-8976-851EB6568562}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -23,5 +30,17 @@ Global
 		{584DB081-6DBB-4938-9F6D-B8FC8CF5F557}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{584DB081-6DBB-4938-9F6D-B8FC8CF5F557}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{584DB081-6DBB-4938-9F6D-B8FC8CF5F557}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F7A9DBB8-B615-42E1-9A9D-2144F4EC0D34}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F7A9DBB8-B615-42E1-9A9D-2144F4EC0D34}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F7A9DBB8-B615-42E1-9A9D-2144F4EC0D34}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F7A9DBB8-B615-42E1-9A9D-2144F4EC0D34}.Release|Any CPU.Build.0 = Release|Any CPU
+		{788645D7-53A0-4869-A7AD-145FF42668C0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{788645D7-53A0-4869-A7AD-145FF42668C0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{788645D7-53A0-4869-A7AD-145FF42668C0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{788645D7-53A0-4869-A7AD-145FF42668C0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CC23A87F-FAF9-4E3F-8976-851EB6568562}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CC23A87F-FAF9-4E3F-8976-851EB6568562}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CC23A87F-FAF9-4E3F-8976-851EB6568562}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CC23A87F-FAF9-4E3F-8976-851EB6568562}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

@@ -1,4 +1,4 @@
-namespace Weekenders.TelegramTools.SyncService;
+namespace Weekenders.TelegramTools.Telegram;
 
 public class TelegramConfiguration
 {
