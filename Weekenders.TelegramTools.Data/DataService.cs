@@ -58,10 +58,12 @@ public class DataService : IDataService
         int result;
         if (status is ProcessStatus.Processed)
         {
+            _logger.LogDebug("Setting Message {Id} status to Processed", message.TelegramId);
             result = await connection.ExecuteAsync(processedSql, new {Status = status, message.Id}, transaction);
         }
         else
         {
+            _logger.LogDebug("Setting Message {Id} status to {Name}", message.TelegramId, nameof(status));
             result = await connection.ExecuteAsync(sql, new { Status = status, message.Id }, transaction);
         }
 

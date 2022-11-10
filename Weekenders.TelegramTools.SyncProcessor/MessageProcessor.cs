@@ -24,16 +24,21 @@ public class MessageProcessor : BackgroundService
         await _telegramService.InitialSetup(false);
         while (!stoppingToken.IsCancellationRequested)
         {
+            _logger.LogDebug("Getting message to process");
             var msg = await _dataService.GetFirstMessageAsync();
             try
             {
                 if (msg is null)
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
+                    var wait = TimeSpan.FromSeconds(10);
+                    _logger.LogDebug("Queue is empty.  Waiting {Seconds}s to grab the next message", wait.Seconds);
+                    await Task.Delay(wait, stoppingToken);
                     continue;
                 }
 
+                _logger.LogInformation("Processing Message Id: {Id} Name: {Name}", msg.Id, msg.Name);
                 await _telegramService.ProcessMessage(msg.TelegramId);
+                _logger.LogInformation("Updating queue with result for {Id}", msg.TelegramId);
                 await _dataService.UpdateMessageStatusAsync(msg, ProcessStatus.Processed);
             }
             catch (Exception e)
