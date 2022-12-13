@@ -34,7 +34,16 @@ var host = Host.CreateDefaultBuilder(args)
 await using (var scope = host.Services.CreateAsyncScope())
 {
     var migrationRunner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
-    migrationRunner.MigrateUp();
-};
+    migrationRunner.ListMigrations();
+    try
+    {
+        migrationRunner.MigrateUp();
+    }
+    catch (Exception e)
+    {
+        Console.WriteLine(e);
+        Environment.Exit(1);
+    }
+}
 
 await host.RunAsync();

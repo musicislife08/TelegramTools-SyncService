@@ -1,10 +1,8 @@
-using Dapper;
 using Dapper.FluentMap;
 using FluentMigrator.Runner;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Weekenders.TelegramTools.Data.Migrations;
-using Weekenders.TelegramTools.Data.Models;
 
 namespace Weekenders.TelegramTools.Data;
 

@@ -37,9 +37,9 @@ public class MessageProcessor : BackgroundService
                 }
 
                 _logger.LogInformation("Processing Message Id: {Id} Name: {Name}", msg.Id, msg.Name);
-                await _telegramService.ProcessMessage(msg.TelegramId);
-                _logger.LogInformation("Updating queue with result for {Id}", msg.TelegramId);
-                await _dataService.UpdateMessageStatusAsync(msg, ProcessStatus.Processed);
+                var result = await _telegramService.ProcessMessage(msg.SourceId);
+                _logger.LogInformation("Updating queue with result {ResultName} for {Id}", result,msg.SourceId);
+                await _dataService.UpdateMessageStatusAsync(msg, result.ProcessStatus);
             }
             catch (Exception e)
             {

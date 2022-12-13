@@ -34,5 +34,6 @@ await using (var scope = host.Services.CreateAsyncScope())
 {
     var migrationRunner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
     migrationRunner.MigrateUp();
-};
+}
+
 await host.RunAsync();
